@@ -73,7 +73,6 @@ fi
 # ── Optional alias ────────────────────────────────────────────────────────────
 
 add_alias() {
-    local cfg="$1"
     SHELL_CONFIG="$HOME/.bashrc"
     if [ "$(basename "${SHELL:-bash}")" = "zsh" ] || [ -f "$HOME/.zshrc" ]; then
         SHELL_CONFIG="$HOME/.zshrc"
