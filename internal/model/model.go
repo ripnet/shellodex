@@ -13,6 +13,14 @@ const (
 	Telnet Protocol = "telnet"
 )
 
+type SortField string
+
+const (
+	SortByName     SortField = "name"
+	SortByHostname SortField = "hostname"
+	SortByLastConn SortField = "last_connected"
+)
+
 type Credential struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -59,6 +67,7 @@ type Config struct {
 	Hosts         []Host       `json:"hosts"`
 	Sync          SyncConfig   `json:"sync,omitempty"`
 	ClipboardMode string       `json:"clipboard_mode,omitempty"` // "off"|"auto"|"osc52"|"native" (empty = auto)
+	DefaultSort   SortField    `json:"default_sort,omitempty"`
 }
 
 func NewID() string {

@@ -207,7 +207,7 @@ func (m *HostEditModel) buildForm() *huh.Form {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Jump Host").
-				Description("Connect via this bastion first").
+				Description("Connect via this bastion first  (press / to filter)").
 				Options(jumpOpts...).
 				Value(&d.jumpID),
 			huh.NewSelect[string]().

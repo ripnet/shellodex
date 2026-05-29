@@ -125,4 +125,14 @@ var (
 	styleUpdateNotice = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorYellow)).
 				Padding(0, 4)
+
+	styleTabActive = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorMauve)).
+			Bold(true).
+			Underline(true).
+			Padding(0, 1)
+
+	styleTabInactive = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorSubtext)).
+				Padding(0, 1)
 )

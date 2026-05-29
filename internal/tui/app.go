@@ -130,6 +130,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.credList.height = msg.Height
 		m.groupList.width = msg.Width
 		m.groupList.height = msg.Height
+		m.settings.width = msg.Width
+		m.settings.height = msg.Height
+		m.settings.credList.width = msg.Width
+		m.settings.credList.height = msg.Height
+		m.settings.groupList.width = msg.Width
+		m.settings.groupList.height = msg.Height
 		return m, nil
 
 	case syncDoneMsg:
@@ -232,23 +238,23 @@ func (m AppModel) launcherKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteTarget = host.ID
 			m.deleteTargetName = host.Name
 			m.deleteKind = deleteHostKind
+			m.prevMode = modeLauncher
 			m.mode = modeConfirmDelete
 			return m, nil
 		}
-	case "c":
-		m.credList = NewCredListModel(m.cfg)
-		m.credList.width = m.width
-		m.credList.height = m.height
-		m.mode = modeCredList
-		return m, nil
-	case "g":
-		m.groupList = NewGroupListModel(m.cfg)
-		m.groupList.width = m.width
-		m.groupList.height = m.height
-		m.mode = modeGroupList
+	case "o":
+		newSort := m.launcher.CycleSort()
+		m.cfg.DefaultSort = newSort
+		m.saveConfig()
 		return m, nil
 	case "s":
 		m.settings = NewSettingsModel(m.cfg)
+		m.settings.width = m.width
+		m.settings.height = m.height
+		m.settings.credList.width = m.width
+		m.settings.credList.height = m.height
+		m.settings.groupList.width = m.width
+		m.settings.groupList.height = m.height
 		m.prevMode = modeLauncher
 		m.mode = modeSettings
 		return m, m.settings.Init()
@@ -292,6 +298,7 @@ func (m AppModel) treeKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteTarget = host.ID
 			m.deleteTargetName = host.Name
 			m.deleteKind = deleteHostKind
+			m.prevMode = modeTree
 			m.mode = modeConfirmDelete
 			return m, nil
 		}
@@ -371,6 +378,7 @@ func (m AppModel) credListKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteTarget = cred.ID
 			m.deleteTargetName = cred.Name
 			m.deleteKind = deleteCredKind
+			m.prevMode = modeCredList
 			m.mode = modeConfirmDelete
 			return m, nil
 		}
@@ -423,6 +431,7 @@ func (m AppModel) groupListKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			m.deleteTarget = g.ID
 			m.deleteTargetName = g.Name
 			m.deleteKind = deleteGroupKind
+			m.prevMode = modeGroupList
 			m.mode = modeConfirmDelete
 			return m, nil
 		}
@@ -490,10 +499,71 @@ func (m AppModel) cancelGroupForm() (AppModel, tea.Cmd) {
 }
 
 func (m AppModel) settingsFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == "esc" {
+	key := msg.String()
+
+	if key == "esc" {
+		if m.settings.IsOnListTab() {
+			m.settings = m.settings.SwitchToGeneralTab()
+			return m, nil
+		}
 		m.mode = m.prevMode
 		return m, nil
 	}
+
+	// CRUD on the Credentials tab
+	if m.settings.IsOnCredTab() {
+		switch key {
+		case "n":
+			m.credEdit = NewCredEditModel(nil)
+			m.prevMode = modeSettings
+			m.mode = modeCredEdit
+			return m, m.credEdit.Init()
+		case "e":
+			if cred := m.settings.SelectedCred(); cred != nil {
+				m.credEdit = NewCredEditModel(cred)
+				m.prevMode = modeSettings
+				m.mode = modeCredEdit
+				return m, m.credEdit.Init()
+			}
+		case "d":
+			if cred := m.settings.SelectedCred(); cred != nil {
+				m.deleteTarget = cred.ID
+				m.deleteTargetName = cred.Name
+				m.deleteKind = deleteCredKind
+				m.prevMode = modeSettings
+				m.mode = modeConfirmDelete
+				return m, nil
+			}
+		}
+	}
+
+	// CRUD on the Groups tab
+	if m.settings.IsOnGroupsTab() {
+		switch key {
+		case "n":
+			m.groupEdit = NewGroupEditModel(m.cfg, nil)
+			m.prevMode = modeSettings
+			m.mode = modeGroupEdit
+			return m, m.groupEdit.Init()
+		case "e":
+			if g := m.settings.SelectedGroup(); g != nil {
+				m.groupEdit = NewGroupEditModel(m.cfg, g)
+				m.prevMode = modeSettings
+				m.mode = modeGroupEdit
+				return m, m.groupEdit.Init()
+			}
+		case "d":
+			if g := m.settings.SelectedGroup(); g != nil {
+				m.deleteTarget = g.ID
+				m.deleteTargetName = g.Name
+				m.deleteKind = deleteGroupKind
+				m.prevMode = modeSettings
+				m.mode = modeConfirmDelete
+				return m, nil
+			}
+		}
+	}
+
 	var cmd tea.Cmd
 	m.settings, cmd = m.settings.Update(msg)
 	if m.settings.IsDone() {
@@ -522,7 +592,7 @@ func (m AppModel) confirmDeleteKey(key string) (tea.Model, tea.Cmd) {
 		m.refreshSubmodels()
 		m.launcher.SetStatus(fmt.Sprintf("Deleted %q", m.deleteTargetName))
 	}
-	m.mode = modeLauncher
+	m.mode = m.prevMode
 	return m, nil
 }
 
@@ -573,6 +643,7 @@ func (m AppModel) delegateUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.settings.IsAborted() {
 			m.mode = m.prevMode
 		}
+		return m, cmd
 	case modeCredList:
 		m.credList, cmd = m.credList.Update(msg)
 	}
@@ -597,7 +668,7 @@ func (m AppModel) View() string {
 	case modeGroupEdit:
 		return m.centeredForm(m.groupEdit.View())
 	case modeSettings:
-		return m.centeredForm(m.settings.View())
+		return m.settings.View()
 	case modeConfirmDelete:
 		return m.confirmDeleteView()
 	case modeSyncOverlay:
@@ -752,6 +823,8 @@ func (m *AppModel) refreshSubmodels() {
 	m.launcher.SetConfig(m.cfg)
 	m.tree.SetConfig(m.cfg)
 	m.groupList.SetConfig(m.cfg)
+	m.settings.credList.SetConfig(m.cfg)
+	m.settings.groupList.SetConfig(m.cfg)
 }
 
 func (m *AppModel) saveConfig() {

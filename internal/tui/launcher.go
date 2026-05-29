@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ type LauncherModel struct {
 	cursor    int
 	input     textinput.Model
 	searching bool
+	sortField model.SortField
 	width     int
 	height    int
 	// statusMsg is a transient message shown in the status bar (e.g. "Saved")
@@ -45,13 +48,34 @@ func NewLauncherModel(cfg *model.Config) LauncherModel {
 	ti.PlaceholderStyle = styleMuted
 	ti.Prompt = "/ "
 
+	sf := cfg.DefaultSort
+	if sf == "" {
+		sf = model.SortByName
+	}
 	m := LauncherModel{
-		cfg:   cfg,
-		input: ti,
+		cfg:       cfg,
+		input:     ti,
+		sortField: sf,
 	}
 	m.rebuildAll()
 	m.refilter()
 	return m
+}
+
+// CycleSort advances through the available sort fields and rebuilds the list.
+// It returns the new sort field so the caller can persist it to config.
+func (m *LauncherModel) CycleSort() model.SortField {
+	switch m.sortField {
+	case model.SortByName:
+		m.sortField = model.SortByHostname
+	case model.SortByHostname:
+		m.sortField = model.SortByLastConn
+	default:
+		m.sortField = model.SortByName
+	}
+	m.rebuildAll()
+	m.refilter()
+	return m.sortField
 }
 
 func (m *LauncherModel) SetConfig(cfg *model.Config) {
@@ -181,7 +205,7 @@ func (m LauncherModel) View() string {
 		title = styleHeader.Width(w).Render("shellodex  —  search")
 		secondRow = styleSearchBar.Width(w).Render(m.input.View())
 	} else {
-		title = styleHeader.Width(w).Render("shellodex")
+		title = styleHeader.Width(w).Render("shellodex  ·  sort: " + sortFieldLabel(m.sortField))
 		secondRow = styleSearchBar.Width(w).Render(
 			styleMuted.Render("press / to search"))
 	}
@@ -466,14 +490,13 @@ func (m LauncherModel) renderStatus(w int) string {
 			styleStatusKey.Render("esc"),
 		)
 	} else {
-		hint = fmt.Sprintf("%s connect  %s search  %s new  %s edit  %s delete  %s creds  %s groups  %s settings  %s tree  %s quit",
+		hint = fmt.Sprintf("%s connect  %s search  %s new  %s edit  %s delete  %s sort  %s settings  %s tree  %s quit",
 			styleStatusKey.Render("enter"),
 			styleStatusKey.Render("/"),
 			styleStatusKey.Render("a"),
 			styleStatusKey.Render("e"),
 			styleStatusKey.Render("d"),
-			styleStatusKey.Render("c"),
-			styleStatusKey.Render("g"),
+			styleStatusKey.Render("o"),
 			styleStatusKey.Render("s"),
 			styleStatusKey.Render("tab"),
 			styleStatusKey.Render("q"),
@@ -497,6 +520,48 @@ func (m *LauncherModel) rebuildAll() {
 			groupPath: m.cfg.GroupPath(h.GroupID),
 			username:  uname,
 		})
+	}
+	slices.SortStableFunc(m.all, func(a, b hostEntry) int {
+		return compareHostEntries(m.sortField, a, b)
+	})
+}
+
+func compareHostEntries(sf model.SortField, a, b hostEntry) int {
+	switch sf {
+	case model.SortByHostname:
+		return cmp.Compare(strings.ToLower(a.host.Hostname), strings.ToLower(b.host.Hostname))
+	case model.SortByLastConn:
+		anil := a.host.LastConnected == nil
+		bnil := b.host.LastConnected == nil
+		if anil && bnil {
+			return 0
+		}
+		if anil {
+			return 1 // never-connected sorts last
+		}
+		if bnil {
+			return -1
+		}
+		if a.host.LastConnected.After(*b.host.LastConnected) {
+			return -1 // most recent first
+		}
+		if b.host.LastConnected.After(*a.host.LastConnected) {
+			return 1
+		}
+		return 0
+	default: // SortByName
+		return cmp.Compare(strings.ToLower(a.host.Name), strings.ToLower(b.host.Name))
+	}
+}
+
+func sortFieldLabel(sf model.SortField) string {
+	switch sf {
+	case model.SortByHostname:
+		return "hostname"
+	case model.SortByLastConn:
+		return "last conn"
+	default:
+		return "name"
 	}
 }
 
