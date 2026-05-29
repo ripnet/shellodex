@@ -19,7 +19,7 @@ TODO: Add a screenshot here once the UI is stable.
 - **SSH & Telnet** — full support for both protocols with custom ports
 - **Jump hosts** — built-in SSH ProxyJump support
 - **Credential management** — store and assign credentials to hosts *(in progress)*
-- **Config sync** — push/pull your config via rclone to any cloud backend
+- **Config sync** — push/pull/mirror your config via rclone to any cloud backend, with optional auto-sync on startup
 - **Self-updating** — run `shellodex --update` to get the latest version
 
 ## Installation
@@ -108,6 +108,32 @@ shellodex stores its config at the platform default location:
 | macOS | `~/Library/Application Support/shellodex/config.json` |
 
 Use `-config /path/to/config.json` to override.
+
+## Config sync
+
+shellodex can sync your config file to any cloud storage backend supported by [rclone](https://rclone.org) (Google Drive, S3, Dropbox, etc.).
+
+### Setup
+
+1. [Install rclone](https://rclone.org/install/) and configure a remote:
+   ```bash
+   rclone config
+   ```
+2. Open shellodex settings (`s`) and set the **rclone Remote** to a path on your remote, e.g. `gdrive:shellodex` or `s3:mybucket/shellodex`.
+3. Choose a sync direction and optionally enable **Sync on startup**.
+
+### Sync directions
+
+| Direction | Command | Effect |
+|-----------|---------|--------|
+| Push | `rclone copy` | Copies local config → remote |
+| Pull | `rclone copy` | Copies remote config → local |
+| Mirror | `rclone sync` | Makes remote identical to local (deletes remote extras) |
+
+### Triggering a sync
+
+- **Ctrl+R** — sync manually at any time from the main screen; result overlay shows on completion
+- **Sync on startup** — when enabled in settings, syncs automatically when shellodex launches; the list refreshes in place and the overlay is suppressed on success (errors are always shown)
 
 ## Building from source
 
