@@ -23,12 +23,17 @@ type treeNode struct {
 }
 
 type TreeModel struct {
-	cfg    *model.Config
-	roots  []*treeNode
-	flat   []*treeNode // flattened visible nodes for cursor navigation
-	cursor int
-	width  int
-	height int
+	cfg       *model.Config
+	roots     []*treeNode
+	flat      []*treeNode // flattened visible nodes for cursor navigation
+	cursor    int
+	width     int
+	height    int
+	statusMsg string
+}
+
+func (m *TreeModel) SetStatus(msg string) {
+	m.statusMsg = msg
 }
 
 func NewTreeModel(cfg *model.Config) TreeModel {
@@ -97,15 +102,17 @@ func (m TreeModel) View() string {
 	row := lipgloss.JoinHorizontal(lipgloss.Top, treePane, divider, detailPane)
 
 	title := styleHeader.Width(m.width).Render("  shellodex  —  tree view")
-	status := styleStatusBar.Width(m.width).Render(
-		fmt.Sprintf("%s back  %s connect  %s edit  %s groups  %s expand/collapse",
-			styleStatusKey.Render("tab"),
-			styleStatusKey.Render("enter"),
-			styleStatusKey.Render("e"),
-			styleStatusKey.Render("g"),
-			styleStatusKey.Render("space"),
-		),
+	hint := fmt.Sprintf("%s back  %s connect  %s edit  %s groups  %s expand/collapse",
+		styleStatusKey.Render("tab"),
+		styleStatusKey.Render("enter"),
+		styleStatusKey.Render("e"),
+		styleStatusKey.Render("g"),
+		styleStatusKey.Render("space"),
 	)
+	if m.statusMsg != "" {
+		hint = styleSuccess.Render(m.statusMsg) + "   " + hint
+	}
+	status := styleStatusBar.Width(m.width).Render(hint)
 	return lipgloss.JoinVertical(lipgloss.Left, title, row, status)
 }
 

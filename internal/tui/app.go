@@ -2,8 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ripnet/shellodex/internal/connect"
 	"github.com/ripnet/shellodex/internal/model"
 	shellsync "github.com/ripnet/shellodex/internal/sync"
 	"github.com/ripnet/shellodex/internal/version"
@@ -22,6 +25,7 @@ const (
 	modeSettings
 	modeConfirmDelete
 	modeSyncOverlay
+	modePasswordPopup
 )
 
 // newGroupOption is the sentinel value used by the host form's Group select to
@@ -48,6 +52,8 @@ type syncDoneMsg struct {
 	err    error
 	silent bool // if true, suppress the overlay on success
 }
+
+type clearStatusMsg struct{}
 
 type updateCheckMsg struct {
 	version string // empty if no update available
@@ -86,6 +92,9 @@ type AppModel struct {
 
 	syncOutput string
 	syncErr    bool
+
+	popupHostName string
+	popupPassword string
 
 	width  int
 	height int
@@ -172,6 +181,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case clearStatusMsg:
+		m.launcher.SetStatus("")
+		m.tree.SetStatus("")
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -209,6 +223,8 @@ func (m AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeLauncher
 		m.syncOutput = ""
 		return m, nil
+	case modePasswordPopup:
+		return m.passwordPopupKey(key)
 	}
 	return m, nil
 }
@@ -278,6 +294,18 @@ func (m AppModel) launcherKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.prevMode = modeLauncher
 		m.mode = modeSettings
 		return m, m.settings.Init()
+	case "p":
+		if host := m.launcher.SelectedHost(); host != nil {
+			status, cmd := m.copyHostPassword(host)
+			m.launcher.SetStatus(status)
+			m.tree.SetStatus(status)
+			return m, cmd
+		}
+	case "P":
+		if host := m.launcher.SelectedHost(); host != nil {
+			m.openPasswordPopup(host, modeLauncher)
+			return m, nil
+		}
 	case "ctrl+r":
 		return m, m.doSync(false)
 	case "q", "esc":
@@ -320,6 +348,18 @@ func (m AppModel) treeKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.deleteKind = deleteHostKind
 			m.prevMode = modeTree
 			m.mode = modeConfirmDelete
+			return m, nil
+		}
+	case "p":
+		if host := m.tree.SelectedHost(); host != nil {
+			status, cmd := m.copyHostPassword(host)
+			m.launcher.SetStatus(status)
+			m.tree.SetStatus(status)
+			return m, cmd
+		}
+	case "P":
+		if host := m.tree.SelectedHost(); host != nil {
+			m.openPasswordPopup(host, modeTree)
 			return m, nil
 		}
 	case "g":
@@ -693,6 +733,8 @@ func (m AppModel) View() string {
 		return m.confirmDeleteView()
 	case modeSyncOverlay:
 		return m.syncOverlayView()
+	case modePasswordPopup:
+		return m.passwordPopupView()
 	default:
 		return m.launcher.View()
 	}
@@ -731,6 +773,70 @@ func (m AppModel) syncOverlayView() string {
 		Padding(1, 3).
 		Render(lines)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m *AppModel) openPasswordPopup(host *model.Host, prev viewMode) {
+	cred := m.cfg.EffectiveCredential(host)
+	pw := ""
+	if cred != nil {
+		pw = cred.Password
+	}
+	m.popupHostName = host.Name
+	m.popupPassword = pw
+	m.prevMode = prev
+	m.mode = modePasswordPopup
+}
+
+func (m AppModel) passwordPopupKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "p":
+		if m.popupPassword != "" && m.cfg.ClipboardMode != "off" {
+			_ = connect.CopyPassword(m.popupPassword, m.cfg.ClipboardMode)
+			m.launcher.SetStatus("Password copied to clipboard")
+			m.tree.SetStatus("Password copied to clipboard")
+			m.mode = m.prevMode
+			return m, clearStatusAfter(3 * time.Second)
+		}
+	}
+	m.mode = m.prevMode
+	return m, nil
+}
+
+func (m AppModel) passwordPopupView() string {
+	pw := m.popupPassword
+	if pw == "" {
+		pw = "(no password configured)"
+	}
+	content := styleOverlayTitle.Render(m.popupHostName) + "\n\n" +
+		styleDetailLabel.Render("Password:  ") + pw + "\n\n" +
+		styleMuted.Render("p copy   any key close")
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorMauve)).
+		Padding(1, 3).
+		Render(content)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m *AppModel) copyHostPassword(host *model.Host) (string, tea.Cmd) {
+	if m.cfg.ClipboardMode == "off" {
+		return "Clipboard is disabled", nil
+	}
+	cred := m.cfg.EffectiveCredential(host)
+	if cred == nil || cred.Password == "" {
+		return "No password configured", nil
+	}
+	if err := connect.CopyPassword(cred.Password, m.cfg.ClipboardMode); err != nil {
+		return "Clipboard error: " + err.Error(), nil
+	}
+	return "Password copied to clipboard", clearStatusAfter(3 * time.Second)
+}
+
+func clearStatusAfter(d time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(d)
+		return clearStatusMsg{}
+	}
 }
 
 // doSync runs rclone in a background goroutine and delivers a syncDoneMsg.
