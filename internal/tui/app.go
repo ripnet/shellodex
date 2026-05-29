@@ -280,7 +280,7 @@ func (m AppModel) launcherKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.settings.Init()
 	case "ctrl+r":
 		return m, m.doSync(false)
-	case "q":
+	case "q", "esc":
 		return m, tea.Quit
 	default:
 		// Navigation keys (j/k/arrows/g/G) and anything else → launcher.
