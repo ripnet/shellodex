@@ -1,0 +1,23 @@
+# Compiled binary (root-level only — does not exclude cmd/shellodex/ source dir)
+/shellodex
+/shellodex.exe
+
+# GoReleaser output
+/dist/
+
+# Claude Code
+.claude/
+
+# Go test artifacts
+*.test
+*.out
+coverage.html
+
+# Editor temporaries
+.idea/
+.vscode/
+*.swp
+*~
+
+# macOS metadata
+.DS_Store
