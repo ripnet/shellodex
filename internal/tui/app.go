@@ -46,6 +46,7 @@ type ConnectRequest struct {
 type syncDoneMsg struct {
 	output string
 	err    error
+	silent bool // if true, suppress the overlay on success
 }
 
 type updateCheckMsg struct {
@@ -92,13 +93,15 @@ type AppModel struct {
 	ConnectRequest *ConnectRequest
 
 	saveFn func(*model.Config) error
+	loadFn func() (*model.Config, error)
 }
 
-func NewAppModel(cfg *model.Config, cfgPath string, saveFn func(*model.Config) error) AppModel {
+func NewAppModel(cfg *model.Config, cfgPath string, saveFn func(*model.Config) error, loadFn func() (*model.Config, error)) AppModel {
 	return AppModel{
 		cfg:       cfg,
 		cfgPath:   cfgPath,
 		saveFn:    saveFn,
+		loadFn:    loadFn,
 		mode:      modeLauncher,
 		launcher:  NewLauncherModel(cfg),
 		tree:      NewTreeModel(cfg),
@@ -108,7 +111,11 @@ func NewAppModel(cfg *model.Config, cfgPath string, saveFn func(*model.Config) e
 }
 
 func (m AppModel) Init() tea.Cmd {
-	return checkUpdateCmd()
+	cmds := []tea.Cmd{checkUpdateCmd()}
+	if m.cfg.Sync.SyncOnStartup && m.cfg.Sync.Remote != "" {
+		cmds = append(cmds, m.doSync(true))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -140,16 +147,29 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case syncDoneMsg:
 		if msg.err != nil {
-			m.syncOutput = msg.err.Error()
-			m.syncErr = true
-		} else {
-			m.syncOutput = msg.output
-			if m.syncOutput == "" {
-				m.syncOutput = "Sync complete."
+			if msg.output != "" {
+				m.syncOutput = msg.output
+			} else {
+				m.syncOutput = msg.err.Error()
 			}
-			m.syncErr = false
+			m.syncErr = true
+			m.mode = modeSyncOverlay
+		} else {
+			if m.loadFn != nil {
+				if newCfg, err := m.loadFn(); err == nil {
+					m.cfg = newCfg
+					m.refreshSubmodels()
+				}
+			}
+			if !msg.silent {
+				m.syncOutput = msg.output
+				if m.syncOutput == "" {
+					m.syncOutput = "Sync complete."
+				}
+				m.syncErr = false
+				m.mode = modeSyncOverlay
+			}
 		}
-		m.mode = modeSyncOverlay
 		return m, nil
 
 	case tea.KeyMsg:
@@ -259,7 +279,7 @@ func (m AppModel) launcherKey(key string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeSettings
 		return m, m.settings.Init()
 	case "ctrl+r":
-		return m, m.doSync()
+		return m, m.doSync(false)
 	case "q":
 		return m, tea.Quit
 	default:
@@ -714,7 +734,8 @@ func (m AppModel) syncOverlayView() string {
 }
 
 // doSync runs rclone in a background goroutine and delivers a syncDoneMsg.
-func (m *AppModel) doSync() tea.Cmd {
+// When silent is true the overlay is suppressed on success.
+func (m *AppModel) doSync(silent bool) tea.Cmd {
 	cfgPath := m.cfgPath
 	remote := m.cfg.Sync.Remote
 	direction := m.cfg.Sync.Direction
@@ -735,7 +756,7 @@ func (m *AppModel) doSync() tea.Cmd {
 		default:
 			result = shellsync.Push(cfgPath, remote)
 		}
-		return syncDoneMsg{output: result.Output, err: result.Err}
+		return syncDoneMsg{output: result.Output, err: result.Err, silent: silent}
 	}
 }
 

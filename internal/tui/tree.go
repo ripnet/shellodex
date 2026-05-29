@@ -10,11 +10,7 @@ import (
 )
 
 // treeLineCount returns how many rendered lines a tree node occupies.
-// Groups are 1 line; hosts are 2 (name + metadata).
 func treeLineCount(n *treeNode) int {
-	if n.host != nil {
-		return 2
-	}
 	return 1
 }
 
@@ -173,42 +169,18 @@ func (m TreeModel) renderTree(w int) string {
 			}
 		} else {
 			h := node.host
-			// Line 1: name + protocol badge right-aligned
-			port := h.Port
-			if port == 0 {
-				port = int(model.DefaultPort(h.Protocol))
-			}
-			badgeText := fmt.Sprintf("%s:%d", h.Protocol, port)
 			namePart := indent + "  " + h.Name
-			// Right-align badge: pad name to fill remaining space
-			badgeW := len([]rune(badgeText))
-			nameW := w - badgeW - 1
+			hostnameW := len([]rune(h.Hostname))
+			nameW := w - hostnameW - 1
 			if nameW < 1 {
 				nameW = 1
 			}
-			nameLine := plainPad(namePart, nameW) + " " + badgeText
-
-			// Line 2: metadata — username  last-connected  tags
-			meta := m.hostMeta(h, indent, w)
-
 			if selected {
-				b.lines = []string{
-					styleSelected.Width(w).Render(plainPad(nameLine, w)),
-					styleSelected.Width(w).Render(plainPad(meta, w)),
-				}
+				line := plainPad(namePart, nameW) + " " + h.Hostname
+				b.lines = []string{styleSelected.Width(w).Render(plainPad(line, w))}
 			} else {
-				protoBadgeStyle := styleSSHBadge
-				if h.Protocol == model.Telnet {
-					protoBadgeStyle = styleTelnetBadge
-				}
-				styledName := indent + "  " + styleNormal.Render(h.Name)
-				styledBadge := protoBadgeStyle.Render(badgeText)
-				nameW2 := w - len([]rune(badgeText)) - 1
-				if nameW2 < 1 {
-					nameW2 = 1
-				}
-				styledNameLine := plainPad(styledName, nameW2) + " " + styledBadge
-				b.lines = []string{styledNameLine, meta}
+				styledLine := plainPad(indent+"  "+styleNormal.Render(h.Name), nameW) + " " + styleMuted.Render(h.Hostname)
+				b.lines = []string{styledLine}
 			}
 		}
 		blocks = append(blocks, b)
@@ -239,45 +211,6 @@ func (m TreeModel) renderTree(w int) string {
 	return sb.String()
 }
 
-// hostMeta builds the second line for a host node: username, last-connected, tags.
-func (m TreeModel) hostMeta(h *model.Host, indent string, w int) string {
-	metaIndent := indent + "    " // extra indent under the name
-	var parts []string
-
-	// Effective username
-	username := h.Username
-	if username == "" {
-		if cred := m.cfg.CredentialByID(h.CredentialID); cred != nil {
-			username = cred.Username
-		}
-	}
-	if username != "" {
-		parts = append(parts, styleUserCol.Render(username))
-	}
-
-	// Last connected
-	lc := relativeTime(h.LastConnected)
-	if lc != "never" {
-		parts = append(parts, styleLastConn.Render(lc))
-	}
-
-	// Tags
-	for _, tag := range h.Tags {
-		if tag != "" {
-			parts = append(parts, styleTagBadge.Render(tag))
-		}
-	}
-
-	if len(parts) == 0 {
-		return ""
-	}
-	joined := metaIndent + strings.Join(parts, "  ")
-	// Truncate to w if needed (plain width estimate)
-	if len([]rune(joined)) > w {
-		joined = string([]rune(joined)[:w])
-	}
-	return joined
-}
 
 func (m TreeModel) renderDetail(w int) string {
 	if m.cursor >= len(m.flat) {

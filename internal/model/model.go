@@ -55,8 +55,9 @@ type Group struct {
 }
 
 type SyncConfig struct {
-	Remote    string `json:"remote"`
-	Direction string `json:"direction"` // "push" | "pull" | "sync"
+	Remote        string `json:"remote"`
+	Direction     string `json:"direction"`      // "push" | "pull" | "sync"
+	SyncOnStartup bool   `json:"sync_on_startup"` // run sync automatically when the app starts
 }
 
 type Config struct {

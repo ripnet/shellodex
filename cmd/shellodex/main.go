@@ -59,8 +59,11 @@ func main() {
 	saveFn := func(c *model.Config) error {
 		return config.Save(cfgPath, c)
 	}
+	loadFn := func() (*model.Config, error) {
+		return config.Load(cfgPath)
+	}
 
-	app := tui.NewAppModel(cfg, cfgPath, saveFn)
+	app := tui.NewAppModel(cfg, cfgPath, saveFn, loadFn)
 
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	result, err := p.Run()

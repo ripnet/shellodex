@@ -21,9 +21,10 @@ const (
 // settingsFormData is heap-allocated and referenced via pointer so huh's
 // value bindings survive Bubble Tea's value copies of SettingsModel.
 type settingsFormData struct {
-	remote    string
-	direction string
-	clipboard string
+	remote        string
+	direction     string
+	clipboard     string
+	syncOnStartup bool
 }
 
 type SettingsModel struct {
@@ -39,9 +40,10 @@ type SettingsModel struct {
 func NewSettingsModel(cfg *model.Config) SettingsModel {
 	m := SettingsModel{
 		data: &settingsFormData{
-			remote:    cfg.Sync.Remote,
-			direction: cfg.Sync.Direction,
-			clipboard: cfg.ClipboardMode,
+			remote:        cfg.Sync.Remote,
+			direction:     cfg.Sync.Direction,
+			clipboard:     cfg.ClipboardMode,
+			syncOnStartup: cfg.Sync.SyncOnStartup,
 		},
 		credList:  NewCredListModel(cfg),
 		groupList: NewGroupListModel(cfg),
@@ -127,10 +129,11 @@ func (m SettingsModel) View() string {
 		}
 		body := lipgloss.Place(w, bodyH, lipgloss.Center, lipgloss.Center, box)
 		status := styleStatusBar.Width(w).Render(
-			fmt.Sprintf("%s%s switch tabs  %s close",
+			fmt.Sprintf("%s%s switch tabs  %s close  %s manual sync (from launcher)",
 				styleStatusKey.Render("["),
 				styleStatusKey.Render("]"),
 				styleStatusKey.Render("esc"),
+				styleStatusKey.Render("ctrl+r"),
 			),
 		)
 		return lipgloss.JoinVertical(lipgloss.Left, tabBar, div, body, status)
@@ -224,8 +227,9 @@ func (m SettingsModel) SelectedGroup() *model.Group {
 
 func (m SettingsModel) Result() model.SyncConfig {
 	return model.SyncConfig{
-		Remote:    m.data.remote,
-		Direction: m.data.direction,
+		Remote:        m.data.remote,
+		Direction:     m.data.direction,
+		SyncOnStartup: m.data.syncOnStartup,
 	}
 }
 
@@ -238,7 +242,7 @@ func (m *SettingsModel) buildForm() *huh.Form {
 	dirOpts := []huh.Option[string]{
 		huh.NewOption("Push (local → remote)", "push"),
 		huh.NewOption("Pull (remote → local)", "pull"),
-		huh.NewOption("Sync (bisync)", "sync"),
+		huh.NewOption("Mirror (local → remote, deletes remote extras)", "sync"),
 	}
 	clipOpts := []huh.Option[string]{
 		huh.NewOption("Auto (native tool, else OSC52)", "auto"),
@@ -256,6 +260,10 @@ func (m *SettingsModel) buildForm() *huh.Form {
 				Title("Default Sync Direction").
 				Options(dirOpts...).
 				Value(&d.direction),
+			huh.NewConfirm().
+				Title("Sync on startup").
+				Description("Pull/push automatically when shellodex launches").
+				Value(&d.syncOnStartup),
 			huh.NewSelect[string]().
 				Title("Copy password on connect").
 				Description("Put a host's password on the clipboard when connecting").
